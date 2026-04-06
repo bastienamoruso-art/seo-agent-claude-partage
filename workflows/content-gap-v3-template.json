@@ -1,0 +1,953 @@
+{
+  "name": "Content Gap Analysis v3 - TEMPLATE",
+  "nodes": [
+    {
+      "id": "node_01",
+      "name": "Client Input Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.1,
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "formTitle": "Content Gap Analysis",
+        "formDescription": "Analyse des gaps de contenu SEO",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Nom du client",
+              "fieldType": "text",
+              "requiredField": true,
+              "fieldDescription": "Apparaît dans le Dashboard du Google Sheet."
+            },
+            {
+              "fieldLabel": "Domaine cible",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "example.com",
+              "fieldDescription": "Votre site, sans https:// ni www. Exemple : mon-site.fr"
+            },
+            {
+              "fieldLabel": "Concurrents (1 à 4 domaines, un par ligne)",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "meilleurtaux.com\npretto.fr\nempruntis.com",
+              "fieldDescription": "Les sites concurrents à analyser. Plus vous en mettez, plus l'analyse est riche. Au-delà de 4, le temps d'exécution augmente significativement."
+            },
+            {
+              "fieldLabel": "Mots-clés de départ (2-5 expressions, une par ligne)",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "courtier immobilier\npret immobilier\nrachat de credit",
+              "fieldDescription": "Ce sont les requêtes principales de votre activité. Le workflow les utilise pour découvrir des mots-clés associés chez vos concurrents. Privilégiez des expressions de 2+ mots, proches de ce que vos clients tapent dans Google."
+            },
+            {
+              "fieldLabel": "Filtre thématique (optionnel)",
+              "fieldType": "textarea",
+              "requiredField": false,
+              "placeholder": "immobilier\npret\ncourtier",
+              "fieldDescription": "Si votre site couvre plusieurs sujets et que vous voulez limiter l'analyse à un seul, listez ici les termes qui doivent apparaître dans les résultats. Laissez vide pour tout analyser."
+            },
+            {
+              "fieldLabel": "Exclusions marque (une par ligne)",
+              "fieldType": "textarea",
+              "requiredField": false,
+              "placeholder": "votre-marque\nconcurrent1\nconcurrent2",
+              "fieldDescription": "Les noms de marque à exclure des résultats (votre marque + celles des concurrents)."
+            },
+            {
+              "fieldLabel": "URL Google Sheet",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "https://docs.google.com/spreadsheets/d/...",
+              "fieldDescription": "Le Google Sheet doit contenir 4 onglets nommés exactement : Opportunites, Detail Keywords, Cannibalisations, Dashboard."
+            },
+            {
+              "fieldLabel": "Activité locale",
+              "fieldType": "dropdown",
+              "requiredField": false,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Non"
+                  },
+                  {
+                    "option": "Oui"
+                  }
+                ]
+              },
+              "fieldDescription": "Si Oui : les mots-clés contenant des villes ou \"près de moi\" seront reclassés en Transactionnel. Note : l'analyse porte sur le SEO organique national, pas le pack local Google Maps."
+            },
+            {
+              "fieldLabel": "Vertical e-commerce",
+              "fieldType": "dropdown",
+              "requiredField": false,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Non"
+                  },
+                  {
+                    "option": "Oui"
+                  }
+                ]
+              },
+              "fieldDescription": "Si Oui : les mots-clés produit seront reclassés en Transactionnel (sauf ceux contenant \"comment\", \"pourquoi\", \"guide\", etc.)."
+            }
+          ]
+        },
+        "path": "content-gap-v2"
+      },
+      "webhookId": "7d695903-e996-4d0f-95ab-6a7c1ec05d71"
+    },
+    {
+      "id": "node_02",
+      "name": "Build Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const f = $input.first().json;\nlet domain = f['Domaine cible'].trim();\ndomain = domain.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0];\nconst competitors = f['Concurrents'].split('\\n').map(c => c.trim()).filter(Boolean);\nconst seeds = f['Mots-clés seeds'].split('\\n').map(s => s.trim()).filter(Boolean).slice(0, 5);\nconst whitelist = (f['Filtre thématique'] || '').split('\\n').map(w => w.trim().toLowerCase()).filter(Boolean);\nconst brandExcl = (f['Exclusions marque'] || '').split('\\n').map(b => b.trim().toLowerCase()).filter(Boolean);\nconst sheetUrl = f['URL Google Sheet'].trim();\nconst m = sheetUrl.match('/d/([a-zA-Z0-9_-]+)');\nif (!m) throw new Error('URL Google Sheet invalide. Format attendu: https://docs.google.com/spreadsheets/d/...');\nlet apiKey;\ntry { apiKey = $env.HALOSCAN_API_KEY; } catch(e) { apiKey = null; }\nif (!apiKey || apiKey === \"REPLACE_WITH_YOUR_API_KEY\") throw new Error(\"Clé API Haloscan manquante. Configurez la variable d'environnement HALOSCAN_API_KEY dans Settings > Environment Variables de n8n.\");\nconst isLocal = (f['Activité locale'] || 'Non') === 'Oui';\nconst isEcommerce = (f['Vertical e-commerce'] || 'Non') === 'Oui';\nconst configWarnings = [];\nconst shortSeeds = seeds.filter(s => s.split(' ').length < 2);\nif (shortSeeds.length > 0) {\n  configWarnings.push('seeds_courtes: ' + shortSeeds.join(', ') + ' -- les seeds de 1 mot produisent des resultats trop larges. Preferer 2+ mots.');\n}\nreturn [{json: {config: {clientName: f['Nom du client'], domain, competitors, seeds, whitelist, brandExcl, spreadsheetId: m[1], sheetUrl, apiKey, isLocal, isEcommerce, configWarnings}}}];"
+      }
+    },
+    {
+      "id": "node_03",
+      "name": "Get Positions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.haloscan.com/api/domains/positions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "haloscan-api-key",
+              "value": "={{ $('Build Config').first().json.config.apiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({input: $('Build Config').first().json.config.domain, mode: 'domain', lineCount: 1000, order_by: 'volume', order: 'desc'}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "node_04",
+      "name": "Parse Positions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        300
+      ],
+      "parameters": {
+        "jsCode": "function extractIntentFromSi(item) {\n  // Haloscan: si_trans, si_comm, si_info, si_nav, si_local, si_brand (true/false/'NA')\n  if (item.si_trans === true) return 'transactional';\n  if (item.si_comm === true) return 'commercial';\n  if (item.si_local === true) return 'local';\n  if (item.si_info === true) return 'informational';\n  if (item.si_nav === true) return 'navigational';\n  if (item.si_brand === true) return 'navigational';\n  return null;\n}\nconst config = $('Build Config').first().json.config;\nconst r = $input.first().json;\nconst raw = r.data || r.results || r.lines || [];\nconst arr = Array.isArray(raw) ? raw : [];\nconst positions = arr.map(i => {\n  const rawIntent = extractIntentFromSi(i);\n  return {\n    keyword: (i.keyword || '').toLowerCase().trim(),\n    position: i.position || 999,\n    url: i.url || i.page || '',\n    volume: i.volume || 0,\n    kvi: i.kvi ?? null,\n    kgr: i.kgr ?? null,\n    cpc: i.cpc || 0,\n    traffic: i.traffic || 0,\n    raw_intent: rawIntent\n  };\n}).filter(p => p.keyword);\nreturn [{json: {config, positions}}];"
+      }
+    },
+    {
+      "id": "node_05",
+      "name": "Get MISSING",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1250,
+        150
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.haloscan.com/api/domains/siteCompetitors/keywordsDiff",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "haloscan-api-key",
+              "value": "={{ $('Build Config').first().json.config.apiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({input: $('Build Config').first().json.config.domain, mode: 'domain', competitors: $('Build Config').first().json.config.competitors, missing: true, bested: false, volume_min: 10, lineCount: 500}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "node_06",
+      "name": "Get BESTED",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1250,
+        500
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.haloscan.com/api/domains/siteCompetitors/keywordsDiff",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "haloscan-api-key",
+              "value": "={{ $('Build Config').first().json.config.apiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({input: $('Build Config').first().json.config.domain, mode: 'domain', competitors: $('Build Config').first().json.config.competitors, missing: false, bested: true, volume_min: 10, lineCount: 300}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "node_22",
+      "name": "Merge MISSING+BESTED",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1500,
+        300
+      ],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "node_07",
+      "name": "Parse Gap Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1750,
+        300
+      ],
+      "parameters": {
+        "jsCode": "function extractIntentFromSi(item) {\n  // Haloscan: si_trans, si_comm, si_info, si_nav, si_local, si_brand (true/false/'NA')\n  if (item.si_trans === true) return 'transactional';\n  if (item.si_comm === true) return 'commercial';\n  if (item.si_local === true) return 'local';\n  if (item.si_info === true) return 'informational';\n  if (item.si_nav === true) return 'navigational';\n  if (item.si_brand === true) return 'navigational';\n  return null;\n}\nconst config = $('Build Config').first().json.config;\nconst mr = $('Get MISSING').first().json;\nconst br = $('Get BESTED').first().json;\nconst gapWarnings = [];\n\nfunction extract(r, type) {\n  const raw = r.data || r.results || r.lines || [];\n  return (Array.isArray(raw) ? raw : []).map(i => {\n    const rawIntent = extractIntentFromSi(i);\n    return {\n      keyword: (i.keyword || '').toLowerCase().trim(),\n      gap_type: type,\n      volume: i.volume || 0,\n      kvi: i.kvi ?? null,\n      kgr: i.kgr ?? null,\n      cpc: i.cpc || 0,\n      best_comp_pos: i.best_competitor_position || i.position || null,\n      best_comp_url: i.best_competitor_url || i.url || '',\n      client_pos: type === 'BESTED' ? (i.best_reference_position || i.reference_position || null) : null,\n      raw_intent: rawIntent\n    };\n  }).filter(g => g.keyword);\n}\n\nconst missing = extract(mr, 'MISSING');\nconst bested = extract(br, 'BESTED');\n\nlet earlyStop = false;\nlet earlyStopReason = '';\nif (missing.length === 0 && bested.length === 0) {\n  earlyStop = true;\n  earlyStopReason = 'no_gap_data: Aucune donnee gap (MISSING et BESTED vides). Verifier les concurrents.';\n}\n\nif (!earlyStop && (missing.length === 0 || bested.length === 0)) {\n  gapWarnings.push('donnees_gap_partielles: ' + (missing.length === 0 ? 'MISSING vide' : 'BESTED vide'));\n}\n\nconst kwMap = new Map();\nfor (const item of missing) { kwMap.set(item.keyword, item); }\nlet bothCount = 0;\nfor (const item of bested) {\n  if (kwMap.has(item.keyword)) {\n    const existing = kwMap.get(item.keyword);\n    existing.gap_type = 'MISSING+BESTED';\n    existing.client_pos = item.client_pos;\n    if (existing.volume < item.volume) existing.volume = item.volume;\n    if (existing.kvi == null && item.kvi != null) existing.kvi = item.kvi;\n    if (existing.kgr == null && item.kgr != null) existing.kgr = item.kgr;\n    if (existing.cpc < item.cpc) existing.cpc = item.cpc;\n    if (!existing.raw_intent && item.raw_intent) existing.raw_intent = item.raw_intent;\n    bothCount++;\n  } else {\n    kwMap.set(item.keyword, item);\n  }\n}\nconst all = Array.from(kwMap.values());\n\nif (!earlyStop && all.length < 30) {\n  gapWarnings.push('peu_de_donnees: seulement ' + all.length + ' keywords gap (< 30). Brief peu representatif.');\n}\n\nconsole.log('Parse Gap Data: ' + missing.length + ' MISSING, ' + bested.length + ' BESTED, ' + bothCount + ' overlap, ' + all.length + ' unique keywords');\nreturn [{json: {config, gapItems: all, missingCount: missing.length, bestedCount: bested.length, bothCount, gapWarnings, earlyStop, earlyStopReason}}];"
+      }
+    },
+    {
+      "id": "node_08",
+      "name": "Enrich Seeds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst config = data.config;\nconst seedResults = [];\nfor (const seed of config.seeds) {\n  try {\n    const r = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://api.haloscan.com/api/keywords/related',\n      body: {keyword: seed, lineCount: 15, order_by: 'volume', order: 'desc'},\n      headers: {'Content-Type': 'application/json', 'haloscan-api-key': config.apiKey},\n      json: true\n    });\n    const items = r.data || r.results || r.lines || [];\n    for (const i of (Array.isArray(items) ? items : [])) {\n      const kw = (i.keyword || '').toLowerCase().trim();\n      if (kw) seedResults.push({keyword: kw, source: 'seed', seed_origin: seed, volume: i.volume || 0, kvi: i.kvi ?? null, kgr: i.kgr ?? null, cpc: i.cpc || 0});\n    }\n    await new Promise(r => setTimeout(r, 500));\n  } catch(e) {\n    console.log('Enrich Seeds: erreur pour seed \"' + seed + '\": ' + e.message);\n  }\n}\nconst allKw = new Set();\nfor (const g of data.gapItems) allKw.add(g.keyword);\nfor (const s of seedResults) allKw.add(s.keyword);\nconst baseCap = 500;\nconst dynamicCap = data.gapItems.length > 300 ? Math.min(800, allKw.size) : baseCap;\nconst clusterInput = Array.from(allKw).slice(0, dynamicCap);\nconsole.log('Enrich Seeds: ' + seedResults.length + ' seed kw, ' + allKw.size + ' total unique, cap=' + dynamicCap + ', sending ' + clusterInput.length);\nreturn [{json: {...data, seedResults, clusterInput}}];"
+      }
+    },
+    {
+      "id": "node_09",
+      "name": "Cluster Keywords",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2250,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.haloscan.com/api/keywords/siteStructure",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "haloscan-api-key",
+              "value": "={{ $('Enrich Seeds').first().json.config.apiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({keywords: $('Enrich Seeds').first().json.clusterInput, mode: 'serp_similarity'}) }}",
+        "options": {
+          "timeout": 120000
+        }
+      }
+    },
+    {
+      "id": "node_10",
+      "name": "THE GRINDER v3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// === THE GRINDER v3 — 2-Level Clustering + Structured Output ===\n\nconst data = $('Enrich Seeds').first().json;\nconst config = data.config;\nconst cr = $input.first().json;\nconst dashboardWarnings = [];\n\nif (config.configWarnings) dashboardWarnings.push(...config.configWarnings);\nif (data.gapWarnings) dashboardWarnings.push(...data.gapWarnings);\n\n// --- EARLY STOP ---\nif (data.earlyStop) {\n  const dashboard = {\n    client: config.clientName, domain: config.domain, competitors: config.competitors,\n    totalGap: 0, missingCount: data.missingCount || 0, bestedCount: data.bestedCount || 0, bothCount: 0,\n    totalPositions: 0, avgScore: 0,\n    alertTriggered: true, alertReason: data.earlyStopReason,\n    warnings: dashboardWarnings,\n    intent_override: config.isEcommerce ? 'e-commerce' : config.isLocal ? 'local' : 'standard',\n    kgr_estimated_count: 0, intent_override_count: 0,\n    totalClusters: 0, totalPages: 0, totalCannibalisations: 0,\n    generatedAt: new Date().toISOString()\n  };\n  return [{json: {config, gapItems: [], posItems: [], pages: [], cannibalisations: [], dashboard, alertTriggered: true}}];\n}\n\n// --- INTENT ---\nconst INTENT_MAP = {\n  'transactional': 'Transactionnel',\n  'commercial':    'Commercial',\n  'informational': 'Informationnel',\n  'navigational':  'Informationnel',\n  'local':         'Transactionnel'\n};\n\nfunction mapIntent(apiLabel) {\n  if (!apiLabel) return 'Informationnel';\n  const label = Array.isArray(apiLabel) ? (apiLabel[0] || '') : String(apiLabel);\n  return INTENT_MAP[label.toLowerCase()] || 'Informationnel';\n}\n\nconst GEO_SIGNALS = ['paris','lyon','marseille','toulouse','bordeaux','lille','nantes','strasbourg','montpellier','rennes','nice','grenoble','toulon','dijon','angers','nimes','reims','clermont','orleans','tours','metz','besancon','caen','rouen','nancy','avignon','perpignan','pres de moi','a proximite','proche','quartier','arrondissement','region','departement'];\nconst INFO_SIGNALS = ['comment','pourquoi','definition','c\\'est quoi','qu\\'est ce','tutoriel','tuto','guide pratique','explication','fonctionnement','difference entre','signification','histoire de'];\n\nfunction applyIntentOverride(intent, keyword, cfg) {\n  if (intent !== 'Informationnel') return intent;\n  const lk = keyword.toLowerCase();\n  if (cfg.isLocal && GEO_SIGNALS.some(g => lk.includes(g))) return 'Transactionnel';\n  if (cfg.isEcommerce && !INFO_SIGNALS.some(s => lk.includes(s))) return 'Transactionnel';\n  return intent;\n}\n\n// --- SCORING ---\nfunction score(item) {\n  let s = 0;\n  s += item.kvi != null ? Math.min(item.kvi * 0.4, 40) : 15;\n  if (item.kgr != null) {\n    if (item.kgr <= 0.25) s += 25;\n    else if (item.kgr <= 0.5) s += 20;\n    else if (item.kgr <= 1) s += 10;\n  } else { s += 10; item.kgr_estimated = true; }\n  if (item.intent === 'Transactionnel') s += 20;\n  else if (item.intent === 'Commercial') s += 15;\n  else s += 5;\n  if (item.gap_type === 'MISSING+BESTED') s += 25;\n  else if (item.gap_type === 'MISSING') s += 15;\n  else if (item.gap_type === 'BESTED') s += 10;\n  if (item.cpc > 2) s += 10;\n  else if (item.cpc > 1) s += 5;\n  else if (item.cpc > 0.5) s += 3;\n  if (item.gap_type === 'BESTED' && item.client_position != null) {\n    if (item.client_position >= 11 && item.client_position <= 20) s += 10;\n    else if (item.client_position >= 21 && item.client_position <= 50) s += 5;\n  }\n  if (item.volume != null && item.volume < 10) s -= 5;\n  return Math.round(s * 10) / 10;\n}\n\n// --- BRAND / WHITELIST ---\nconst brandT = [...config.brandExcl];\nconst isB = kw => brandT.some(t => kw.includes(t));\nconst matchW = kw => config.whitelist.length === 0 || config.whitelist.some(w => kw.includes(w));\n\n// --- PROCESS GAP ITEMS ---\nconst seedMap = new Map();\nfor (const s of data.seedResults) { if (!seedMap.has(s.keyword)) seedMap.set(s.keyword, s); }\n\nconst gapItems = [];\nlet intentOverrideCount = 0;\nfor (const g of data.gapItems) {\n  if (isB(g.keyword) || !matchW(g.keyword)) continue;\n  const si = seedMap.get(g.keyword);\n  if (si) {\n    if (g.kvi == null && si.kvi != null) g.kvi = si.kvi;\n    if (g.kgr == null && si.kgr != null) g.kgr = si.kgr;\n  }\n  const baseIntent = mapIntent(g.raw_intent);\n  const finalIntent = applyIntentOverride(baseIntent, g.keyword, config);\n  if (finalIntent !== baseIntent) intentOverrideCount++;\n  g.intent = finalIntent;\n  g.client_position = g.client_pos;\n  g.score = score(g);\n  gapItems.push(g);\n}\ngapItems.sort((a, b) => b.score - a.score);\n\n// --- PROCESS POSITIONS ---\nconst positions = $('Parse Positions').first().json.positions || [];\nconst posItems = [];\nfor (const p of positions) {\n  if (isB(p.keyword) || !matchW(p.keyword)) continue;\n  const baseIntent = mapIntent(p.raw_intent);\n  p.intent = applyIntentOverride(baseIntent, p.keyword, config);\n  posItems.push(p);\n}\n\n// --- CANNIBALISATIONS ---\nconst posUrlMap = new Map();\nfor (const p of posItems) {\n  if (!posUrlMap.has(p.keyword)) posUrlMap.set(p.keyword, []);\n  posUrlMap.get(p.keyword).push({url: p.url, position: p.position});\n}\nconst cannibalisations = [];\nfor (const [kw, entries] of posUrlMap) {\n  const uniqueUrls = [...new Set(entries.map(e => e.url))];\n  if (uniqueUrls.length >= 2) {\n    const sorted = entries.sort((a, b) => a.position - b.position);\n    const posGap = sorted[1].position - sorted[0].position;\n    if (posGap <= 30) {\n      cannibalisations.push({\n        keyword: kw, url1: sorted[0].url, pos1: sorted[0].position,\n        url2: sorted[1].url, pos2: sorted[1].position,\n        nb_urls: uniqueUrls.length,\n        ecart: posGap,\n        volume: posItems.find(p => p.keyword === kw)?.volume || 0\n      });\n    }\n  }\n}\ncannibalisations.sort((a, b) => (b.volume || 0) - (a.volume || 0));\n\n// --- CROSS-REFERENCE GAP vs POSITIONS ---\nconst bestPosUrl = new Map();\nfor (const p of posItems) {\n  if (!bestPosUrl.has(p.keyword) || p.position < bestPosUrl.get(p.keyword).position) {\n    bestPosUrl.set(p.keyword, {url: p.url, position: p.position});\n  }\n}\nfor (const g of gapItems) {\n  const existing = bestPosUrl.get(g.keyword);\n  if (existing) {\n    g.existing_url = existing.url;\n    g.existing_pos = existing.position;\n    g.action = 'Optimiser';\n  } else {\n    g.existing_url = '';\n    g.existing_pos = null;\n    g.action = 'Creer';\n  }\n}\n\n// === 2-LEVEL CLUSTERING VIA EMBEDDINGS ===\n\n// Get OpenAI API key from config or env\nlet openaiKey;\ntry { openaiKey = $env.OPENAI_API_KEY; } catch(e) { openaiKey = null; }\nif (!openaiKey || openaiKey === \"REPLACE_WITH_YOUR_API_KEY\") throw new Error(\"Clé API OpenAI manquante. Configurez la variable d'environnement OPENAI_API_KEY dans Settings > Environment Variables de n8n. Le workflow utilise text-embedding-3-small pour le clustering.\");\n\nconst allKws = gapItems.map(g => g.keyword);\nconst allScores = gapItems.map(g => g.score);\n\n// --- EMBEDDING API ---\nasync function getEmbeddings(keywords, apiKey) {\n  const BATCH = 2000;\n  const allEmbed = [];\n  for (let i = 0; i < keywords.length; i += BATCH) {\n    const batch = keywords.slice(i, i + BATCH);\n    const r = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://api.openai.com/v1/embeddings',\n      headers: {'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json'},\n      body: {input: batch, model: 'text-embedding-3-small'},\n      json: true\n    });\n    if (r.error) throw new Error('OpenAI: ' + r.error.message);\n    const sorted = r.data.sort((a, b) => a.index - b.index);\n    allEmbed.push(...sorted.map(d => d.embedding));\n  }\n  return allEmbed;\n}\n\n// --- COSINE SIMILARITY ---\nfunction cosine(a, b) {\n  let dot = 0, na = 0, nb = 0;\n  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }\n  return (Math.sqrt(na) && Math.sqrt(nb)) ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;\n}\n\n// --- AGGLOMERATIVE CLUSTERING (Union-Find) ---\nfunction agglomerativeCluster(embeddings, threshold) {\n  const n = embeddings.length;\n  const parent = Array.from({length: n}, (_, i) => i);\n  function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }\n  function union(x, y) { parent[find(y)] = find(x); }\n  \n  const merges = [];\n  for (let i = 0; i < n; i++) {\n    for (let j = i + 1; j < n; j++) {\n      const sim = cosine(embeddings[i], embeddings[j]);\n      if (sim >= threshold) merges.push({i, j, sim});\n    }\n  }\n  merges.sort((a, b) => b.sim - a.sim);\n  for (const {i, j} of merges) union(i, j);\n  \n  const groups = new Map();\n  for (let i = 0; i < n; i++) {\n    const root = find(i);\n    if (!groups.has(root)) groups.set(root, []);\n    groups.get(root).push(i);\n  }\n  return groups;\n}\n\n// --- LABEL FROM KEYWORDS ---\nfunction makeLabel(indices, keywords, scores) {\n  const sorted = [...indices].sort((a, b) => (scores[b] || 0) - (scores[a] || 0));\n  const topKw = keywords[sorted[0]];\n  const STOPS = new Set(['de','d','des','du','le','la','les','l','un','une','et','en','a','au','aux','pour','sur','par','avec','dans','que','qui','est','ce','comment','combien','quel','quelle']);\n  const words = topKw.replace(/[?!,.:;]/g, '').split(/[\\s'']+/).filter(w => w.length > 2 && !STOPS.has(w.toLowerCase()));\n  return words.slice(0, 4).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || topKw;\n}\n\n// --- RUN CLUSTERING ---\nlet embeddings;\ntry {\n  embeddings = await getEmbeddings.call(this, allKws, openaiKey);\n} catch(e) {\n  console.log('Embedding error: ' + e.message + ' - falling back to no clustering');\n  embeddings = null;\n}\n\nconst kwPage = new Map();\nconst kwTopic = new Map();\n\nif (embeddings && embeddings.length === allKws.length) {\n  // === HYBRID CLUSTERING: Embeddings (pages) + Keywords (topics) ===\n\n  // Step 1: Compute adaptive page threshold from similarity distribution\n  const sampleSims = [];\n  const step = Math.max(1, Math.floor(allKws.length / 60));\n  for (let i = 0; i < allKws.length; i += step) {\n    for (let j = i + step; j < allKws.length; j += step) {\n      sampleSims.push(cosine(embeddings[i], embeddings[j]));\n    }\n  }\n  sampleSims.sort((a, b) => a - b);\n  const p85 = sampleSims[Math.floor(sampleSims.length * 0.85)] || 0.82;\n  const PAGE_THRESHOLD = Math.min(0.88, Math.max(0.78, p85));\n  console.log('Page threshold: ' + PAGE_THRESHOLD.toFixed(3) + ' (p85=' + p85.toFixed(3) + ', n=' + allKws.length + ')');\n\n  // Step 2: Cluster keywords into pages using embeddings\n  const pageGroups = agglomerativeCluster(embeddings, PAGE_THRESHOLD);\n  \n  // Step 3: Split oversized pages (>12 KW) with tighter threshold\n  const MAX_PAGE = 20;\n  const pages = [];\n  for (const [root, indices] of pageGroups) {\n    if (indices.length <= MAX_PAGE) {\n      pages.push(indices);\n    } else {\n      const subEmbed = indices.map(i => embeddings[i]);\n      const tighter = Math.min(0.95, PAGE_THRESHOLD + 0.08);\n      const subGroups = agglomerativeCluster(subEmbed, tighter);\n      for (const [sr, subIdx] of subGroups) {\n        pages.push(subIdx.map(si => indices[si]));\n      }\n    }\n  }\n  \n  // Step 4: Label each page (top keyword by score, cleaned)\n  const STOPS = new Set(['de','d','des','du','le','la','les','l','un','une','et','en','a','au','aux','pour','sur','par','avec','dans','que','qui','est','ce','comment','combien','quel','quelle','quoi','quand','tout','faire','son','sa','ses','mon','ma','mes','ne','pas','plus','ou','se','si']);\n  \n  function cleanLabel(kw) {\n    // Preserve accents, clean punctuation, handle apostrophes properly\n    const cleaned = kw\n      .replace(/[?!,.:;\"]/g, '')\n      .replace(/['']/g, \"'\");\n    const words = cleaned.split(/[\\s]+/)\n      .filter(w => {\n        const lower = w.toLowerCase().replace(/'/g, '');\n        return lower.length > 2 && !STOPS.has(lower) && !/^\\d+$/.test(lower) \n          && !['j\\'ai', 'l\\'on', 'c\\'est', 'n\\'est', 'qu\\'un', 'qu\\'une', 'd\\'un', 'd\\'une'].includes(lower);\n      });\n    // Capitalize first letter, preserve rest (including accents)\n    return words.slice(0, 4).map(w => {\n      // Don't capitalize after apostrophe\n      if (w.includes(\"'\")) {\n        const parts = w.split(\"'\");\n        return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(\"'\");\n      }\n      return w.charAt(0).toUpperCase() + w.slice(1);\n    }).join(' ') || kw;\n  }\n  \n  function pageLabel(indices) {\n    const sorted = [...indices].sort((a, b) => (allScores[b] || 0) - (allScores[a] || 0));\n    return cleanLabel(allKws[sorted[0]]);\n  }\n  \n  // Step 5: TOPIC CLUSTERING via shared significant words (not embeddings)\n  // Extract 2 most significant words per page (from the top keyword)\n  function topicWords(indices) {\n    const sorted = [...indices].sort((a, b) => (allScores[b] || 0) - (allScores[a] || 0));\n    // Pool words from top 3 keywords of the page\n    const wordFreq = new Map();\n    for (const idx of sorted.slice(0, Math.min(3, sorted.length))) {\n      const words = allKws[idx].toLowerCase().replace(/[?!,.:;'\"]/g, '').split(/[\\s'']+/)\n        .filter(w => w.length > 2 && !STOPS.has(w) && !/^\\d+$/.test(w));\n      for (const w of words) wordFreq.set(w, (wordFreq.get(w) || 0) + 1);\n    }\n    // Return the 2 most frequent words (= shared theme)\n    return [...wordFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(e => e[0]);\n  }\n  \n  // Assign topic to each page based on its top 2 words\n  const pageTopicWords = pages.map(indices => topicWords(indices));\n  \n  // Group pages that share at least 1 significant word into the same topic\n  const pageTopicId = new Array(pages.length).fill(-1);\n  let nextTopic = 0;\n  const topicWordMap = new Map(); // \"word\" -> topicId\n  \n  for (let i = 0; i < pages.length; i++) {\n    const tw = pageTopicWords[i];\n    let assignedTopic = -1;\n    \n    // Check if any of this page's words already belong to a topic\n    for (const w of tw) {\n      if (topicWordMap.has(w)) {\n        assignedTopic = topicWordMap.get(w);\n        break;\n      }\n    }\n    \n    if (assignedTopic === -1) {\n      // New topic\n      assignedTopic = nextTopic++;\n    }\n    \n    pageTopicId[i] = assignedTopic;\n    // Register all words of this page under this topic\n    for (const w of tw) {\n      if (!topicWordMap.has(w)) topicWordMap.set(w, assignedTopic);\n    }\n  }\n  \n  // Build topic labels from the highest-scoring page in each topic\n  const topicPages = new Map(); // topicId -> [pageIndex]\n  for (let i = 0; i < pages.length; i++) {\n    const tid = pageTopicId[i];\n    if (!topicPages.has(tid)) topicPages.set(tid, []);\n    topicPages.get(tid).push(i);\n  }\n  \n  const topicLabelMap = new Map(); // topicId -> label\n  for (const [tid, pidxs] of topicPages) {\n    let bestScore = -1, bestLabel = '';\n    for (const pi of pidxs) {\n      const maxS = Math.max(...pages[pi].map(i => allScores[i] || 0));\n      if (maxS > bestScore) { bestScore = maxS; bestLabel = pageLabel(pages[pi]); }\n    }\n    topicLabelMap.set(tid, bestLabel);\n  }\n  \n  // Step 6: Assign topic and page to each keyword\n  for (let pi = 0; pi < pages.length; pi++) {\n    const tid = pageTopicId[pi];\n    const tLabel = topicLabelMap.get(tid);\n    const pLabel = pageLabel(pages[pi]);\n    const pagesInTopic = topicPages.get(tid).length;\n    \n    for (const kwIdx of pages[pi]) {\n      kwTopic.set(allKws[kwIdx], tLabel);\n      if (pagesInTopic === 1) {\n        // Single page topic: don't duplicate label\n        kwPage.set(allKws[kwIdx], tLabel);\n      } else {\n        kwPage.set(allKws[kwIdx], tLabel + ' > ' + pLabel);\n      }\n    }\n  }\n  \n  console.log('Clustering: ' + pages.length + ' pages, ' + topicPages.size + ' topics (threshold=' + PAGE_THRESHOLD.toFixed(3) + ')');\n\n  // Step 7: Post-merge isolated keywords (pages with <=2 KW) into nearest page\n  // Only merge within the same topic\n  const MIN_PAGE_SIZE = 3;\n  const pageEmbeddings = pages.map(indices => {\n    const dim = embeddings[0].length;\n    const c = new Array(dim).fill(0);\n    for (const idx of indices) for (let d = 0; d < dim; d++) c[d] += embeddings[idx][d];\n    for (let d = 0; d < dim; d++) c[d] /= indices.length;\n    return c;\n  });\n  \n  // Track which pages to merge into which\n  const mergeInto = new Array(pages.length).fill(-1); // -1 = keep as-is\n  \n  for (let pi = 0; pi < pages.length; pi++) {\n    if (pages[pi].length > MIN_PAGE_SIZE) continue; // skip pages that are big enough\n    \n    // Find nearest page ACROSS ALL TOPICS (cross-topic merge)\n    let bestSim = -1, bestTarget = -1;\n    for (let spi = 0; spi < pages.length; spi++) {\n      if (spi === pi) continue;\n      if (mergeInto[spi] !== -1) continue;\n      if (pages[spi].length <= MIN_PAGE_SIZE) continue; // merge into bigger pages only\n      const sim = cosine(pageEmbeddings[pi], pageEmbeddings[spi]);\n      if (sim > bestSim) { bestSim = sim; bestTarget = spi; }\n    }\n    \n    // Merge if similarity is high enough (>0.72 cross-topic)\n    if (bestTarget !== -1 && bestSim > 0.68) {\n      mergeInto[pi] = bestTarget;\n    }\n  }\n  \n  // Apply merges\n  for (let pi = 0; pi < pages.length; pi++) {\n    if (mergeInto[pi] !== -1) {\n      pages[mergeInto[pi]].push(...pages[pi]);\n      pages[pi] = []; // empty it\n    }\n  }\n  \n  // Remove empty pages and rebuild assignments\n  const finalPages = pages.filter(p => p.length > 0);\n  kwTopic.clear();\n  kwPage.clear();\n  \n  // Rebuild topic assignments (topic structure hasn't changed, just page contents)\n  const finalPageTopicId = [];\n  for (let pi = 0; pi < pages.length; pi++) {\n    if (pages[pi].length > 0) {\n      finalPageTopicId.push(pageTopicId[pi]);\n    }\n  }\n  \n  // Rebuild topicPages\n  const finalTopicPages = new Map();\n  for (let i = 0; i < finalPages.length; i++) {\n    const tid = finalPageTopicId[i];\n    if (!finalTopicPages.has(tid)) finalTopicPages.set(tid, []);\n    finalTopicPages.get(tid).push(i);\n  }\n  \n  // Rebuild topic labels\n  const finalTopicLabels = new Map();\n  for (const [tid, pidxs] of finalTopicPages) {\n    let bestScore = -1, bestLabel = '';\n    for (const pi of pidxs) {\n      const maxS = Math.max(...finalPages[pi].map(i => allScores[i] || 0));\n      if (maxS > bestScore) { bestScore = maxS; bestLabel = pageLabel(finalPages[pi]); }\n    }\n    finalTopicLabels.set(tid, bestLabel);\n  }\n  \n  // Final assignment\n  for (let pi = 0; pi < finalPages.length; pi++) {\n    const tid = finalPageTopicId[pi];\n    const tLabel = finalTopicLabels.get(tid);\n    const pLabel = pageLabel(finalPages[pi]);\n    const pagesInTopic = finalTopicPages.get(tid).length;\n    \n    for (const kwIdx of finalPages[pi]) {\n      kwTopic.set(allKws[kwIdx], tLabel);\n      if (pagesInTopic === 1) {\n        kwPage.set(allKws[kwIdx], tLabel);\n      } else {\n        kwPage.set(allKws[kwIdx], tLabel + ' > ' + pLabel);\n      }\n    }\n  }\n  \n  const mergedCount = mergeInto.filter(m => m !== -1).length;\n  console.log('Post-merge: ' + mergedCount + ' small pages absorbed. Final: ' + finalPages.length + ' pages, ' + finalTopicPages.size + ' topics');\n\n\n} else {\n  // Fallback: no clustering\n  for (const kw of allKws) {\n    kwTopic.set(kw, 'Non classe');\n    kwPage.set(kw, 'Non classe');\n  }\n}\n\n// Assign to gapItems\nfor (const g of gapItems) {\n  g.topic_cluster = kwTopic.get(g.keyword) || 'Divers';\n  g.page = kwPage.get(g.keyword) || kwTopic.get(g.keyword) || 'Divers';\n}\n\n// Build pages summary (for Opportunites tab)\nconst pageMap = new Map();\nfor (const g of gapItems) {\n  if (!pageMap.has(g.page)) pageMap.set(g.page, []);\n  pageMap.get(g.page).push(g);\n}\n\nconst pages = [];\nfor (const [pageName, items] of pageMap) {\n  items.sort((a, b) => b.score - a.score);\n  const totalVol = items.reduce((s, g) => s + (typeof g.volume === 'number' ? g.volume : 0), 0);\n  const avgScore = Math.round(items.reduce((s, g) => s + g.score, 0) / items.length * 10) / 10;\n  const bestScore = items[0].score;\n  const mainKw = items[0].keyword;\n  const intents = {};\n  items.forEach(g => intents[g.intent] = (intents[g.intent] || 0) + 1);\n  const dominantIntent = Object.entries(intents).sort((a, b) => b[1] - a[1])[0][0];\n  const actions = {};\n  items.forEach(g => actions[g.action] = (actions[g.action] || 0) + 1);\n  const dominantAction = Object.entries(actions).sort((a, b) => b[1] - a[1])[0][0];\n\n  // Format labels\n  const parts = pageName.split(' > ');\n  const topicLabel = parts[0].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');\n  const pageLabel = parts.length > 1 ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : topicLabel;\n\n  const mainKwVol = typeof items[0].volume === 'number' ? items[0].volume : 0;\n  pages.push({\n    topic_cluster: topicLabel,\n    page: pageLabel,\n    action: dominantAction,\n    keyword_principal: mainKw,\n    nb_keywords: items.length,\n    volume_kw_principal: mainKwVol,\n    volume_total: totalVol,\n    score_moyen: avgScore,\n    meilleur_score: bestScore,\n    intent: dominantIntent,\n    keywords: items.map(g => g.keyword).join(', ')\n  });\n}\npages.sort((a, b) => b.meilleur_score - a.meilleur_score);\n\n// --- ALERTS ---\nlet alertTriggered = false;\nlet alertReason = '';\n\nif (gapItems.length > 0) {\n  const p80i = Math.floor(gapItems.length * 0.2);\n  const p80s = gapItems[p80i]?.score || 0;\n  if (p80s < 40) {\n    dashboardWarnings.push('score_quality: Les meilleurs keywords scorent bas (p80 = ' + p80s + '). Verifier la pertinence des seeds/concurrents.');\n  }\n}\nif (config.isLocal) {\n  dashboardWarnings.push('local_note: Positions = organique national uniquement (pas pack local Google Maps)');\n}\n\nconst kgrEstCount = gapItems.filter(g => g.kgr_estimated).length;\nconst intD = {}; gapItems.forEach(g => intD[g.intent] = (intD[g.intent] || 0) + 1);\nconst bothCount = gapItems.filter(g => g.gap_type === 'MISSING+BESTED').length;\nconst topicSet = new Set(pages.map(p => p.topic_cluster));\n\nconst dashboard = {\n  client: config.clientName, domain: config.domain, competitors: config.competitors,\n  totalGap: gapItems.length, missingCount: data.missingCount, bestedCount: data.bestedCount, bothCount,\n  totalPositions: posItems.length,\n  totalTopicClusters: topicSet.size,\n  totalPages: pages.length,\n  totalCannibalisations: cannibalisations.length,\n  avgScore: gapItems.length > 0 ? Math.round(gapItems.reduce((s, g) => s + g.score, 0) / gapItems.length * 10) / 10 : 0,\n  top10: pages.filter(p => p.topic_cluster.toLowerCase() !== 'divers').slice(0, 10).map(p => p.topic_cluster + ' / ' + p.page + ' (' + p.meilleur_score + ')'),\n  intentDistribution: intD,\n  alertTriggered, alertReason,\n  warnings: dashboardWarnings,\n  kgr_estimated_count: kgrEstCount,\n  intent_override: config.isEcommerce ? 'e-commerce' : config.isLocal ? 'local' : 'standard',\n  intent_override_count: intentOverrideCount,\n  generatedAt: new Date().toISOString()\n};\n\nreturn [{json: {config, gapItems, posItems, pages, cannibalisations, dashboard, alertTriggered}}];\n"
+      }
+    },
+    {
+      "id": "node_11",
+      "name": "Check Alert",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2750,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.alertTriggered }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node_12",
+      "name": "Alert STOP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3000,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst d = data.dashboard;\nconst reason = d.alertReason || 'Clustering alert: ' + d.ucRatio + ' non classifie.';\nreturn [{json: {\n  status: 'ALERT - STOP',\n  message: reason,\n  warnings: d.warnings || [],\n  dashboard: d\n}}];"
+      }
+    },
+    {
+      "id": "node_19",
+      "name": "Clear GAP Tab",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3050,
+        300
+      ],
+      "credentials": {},
+      "parameters": {
+        "operation": "clear",
+        "documentId": {
+          "mode": "url",
+          "value": "={{ $('Build Config').first().json.config.sheetUrl }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Detail Keywords"
+        }
+      }
+    },
+    {
+      "id": "node_20",
+      "name": "Clear Positions Tab",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3200,
+        300
+      ],
+      "credentials": {},
+      "parameters": {
+        "operation": "clear",
+        "documentId": {
+          "mode": "url",
+          "value": "={{ $('Build Config').first().json.config.sheetUrl }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Opportunites"
+        }
+      }
+    },
+    {
+      "id": "node_21",
+      "name": "Clear Dashboard Tab",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3400,
+        300
+      ],
+      "credentials": {},
+      "parameters": {
+        "operation": "clear",
+        "documentId": {
+          "mode": "url",
+          "value": "={{ $('Build Config').first().json.config.sheetUrl }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Dashboard"
+        }
+      }
+    },
+    {
+      "id": "node_13",
+      "name": "Prepare Detail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const data = $('THE GRINDER v3').first().json;\n\nconst GAP_LABELS = {\n  'MISSING': 'Absent (concurrent present)',\n  'BESTED': 'Depasse (concurrent devant)',\n  'MISSING+BESTED': 'Gap fort (absent + depasse)'\n};\n\nreturn data.gapItems.map(g => {\n  const parts = (g.page || '').split(' > ');\n  const topicLabel = (g.topic_cluster || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');\n  const pageLabel = parts.length > 1 ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : topicLabel;\n  const label = (topicLabel.toLowerCase().replace(/\\s/g,'') === pageLabel.toLowerCase().replace(/\\s/g,''))\n    ? topicLabel\n    : topicLabel + ' > ' + pageLabel;\n\n  return {json: {\n    'Opportunite': label,\n    'Keyword': g.keyword,\n    'Action': g.action,\n    'Score': String(g.score),\n    'Type de gap': GAP_LABELS[g.gap_type] || g.gap_type,\n    'Intent': g.intent,\n    'Volume': String(g.volume),\n    'CPC': String(g.cpc),\n    'URL existante': g.existing_url || '',\n    'Position actuelle': g.existing_pos != null ? String(g.existing_pos) : ''\n  }};\n});"
+      }
+    },
+    {
+      "id": "node_14",
+      "name": "Write Detail",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3850,
+        200
+      ],
+      "credentials": {},
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "mode": "url",
+          "value": "={{ $('Build Config').first().json.config.sheetUrl }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Detail Keywords"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node_15",
+      "name": "Prepare Opportunites",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const data = $('THE GRINDER v3').first().json;\nconst filtered = data.pages.filter(p => p.topic_cluster.toLowerCase() !== 'divers');\nlet rank = 0;\nreturn filtered.map(p => {\n  rank++;\n  const topic = p.topic_cluster;\n  const page = p.page;\n  const label = (topic.toLowerCase().replace(/\\s/g,'') === page.toLowerCase().replace(/\\s/g,''))\n    ? topic\n    : topic + ' > ' + page;\n  return {json: {\n    '#': String(rank),\n    'Opportunite': label,\n    'Action': p.action,\n    'Keyword principal': p.keyword_principal,\n    'Nb mots-cles': String(p.nb_keywords),\n    'Volume (KW principal)': String(p.volume_kw_principal),\n    'Volume (cumule)': String(p.volume_total),\n    'Score': String(p.meilleur_score),\n    'Intent': p.intent,\n    'URL existante': p.url_existante || '',\n    'CPC moyen': (p.cpc_moyen != null && p.cpc_moyen !== undefined) ? String(p.cpc_moyen) : '',\n    'Mots-cles': p.keywords\n  }};\n});"
+      }
+    },
+    {
+      "id": "node_16",
+      "name": "Write Opportunites",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3850,
+        400
+      ],
+      "credentials": {},
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "mode": "url",
+          "value": "={{ $('Build Config').first().json.config.sheetUrl }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Opportunites"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "#": "={{ $json['#'] }}",
+            "Opportunite": "={{ $json['Opportunite'] }}",
+            "Action": "={{ $json['Action'] }}",
+            "Keyword principal": "={{ $json['Keyword principal'] }}",
+            "Nb mots-cles": "={{ $json['Nb mots-cles'] }}",
+            "Volume (KW principal)": "={{ $json['Volume (KW principal)'] }}",
+            "Volume (cumule)": "={{ $json['Volume (cumule)'] }}",
+            "Score": "={{ $json['Score'] }}",
+            "Intent": "={{ $json['Intent'] }}",
+            "URL existante": "={{ $json['URL existante'] }}",
+            "CPC moyen": "={{ $json['CPC moyen'] }}",
+            "Mots-cles": "={{ $json['Mots-cles'] }}"
+          }
+        },
+        "options": {
+          "headerRow": 1
+        }
+      }
+    },
+    {
+      "id": "node_17",
+      "name": "Prepare Dashboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        600
+      ],
+      "parameters": {
+        "jsCode": "const data = $('THE GRINDER v3').first().json;\nconst d = data.dashboard;\nconst rows = [];\n\n// Executive summary\nconst pagesCreer = data.pages.filter(p => p.action === 'Creer').length;\nconst pagesOptimiser = data.pages.filter(p => p.action === 'Optimiser').length;\nconst pagesNonDivers = data.pages.filter(p => p.topic_cluster.toLowerCase() !== 'divers').length;\n\nrows.push(\n  {Metric: 'RESUME', Value: ''},\n  {Metric: 'Client', Value: d.client},\n  {Metric: 'Domaine', Value: d.domain},\n  {Metric: 'Concurrents analyses', Value: d.competitors.join(', ')},\n  {Metric: '', Value: ''},\n  {Metric: 'Opportunites identifiees', Value: String(pagesNonDivers)},\n  {Metric: '   Pages a creer', Value: String(pagesCreer)},\n  {Metric: '   Pages a optimiser', Value: String(pagesOptimiser)},\n  {Metric: 'Cannibalisations detectees', Value: String(d.totalCannibalisations)},\n  {Metric: 'Mots-cles analyses', Value: String(d.totalGap)},\n  {Metric: '', Value: ''}\n);\n\nif (d.warnings && d.warnings.length > 0) {\n  rows.push({Metric: 'ALERTES', Value: ''});\n  d.warnings.forEach((w, i) => rows.push({Metric: 'Alerte ' + (i + 1), Value: w}));\n  rows.push({Metric: '', Value: ''});\n}\n\nrows.push(\n  {Metric: 'TOP 10 OPPORTUNITES', Value: ''}\n);\nd.top10.forEach((t, i) => rows.push({Metric: String(i + 1), Value: t}));\nrows.push(\n  {Metric: '', Value: ''},\n  {Metric: 'DETAILS TECHNIQUES', Value: ''},\n  {Metric: 'Topic clusters', Value: String(d.totalTopicClusters)},\n  {Metric: 'Score moyen', Value: String(d.avgScore)},\n  {Metric: 'Intent', Value: JSON.stringify(d.intentDistribution)},\n  {Metric: 'Genere le', Value: d.generatedAt}\n);\n\nreturn rows.map(r => ({json: r}));"
+      }
+    },
+    {
+      "id": "node_18",
+      "name": "Write Dashboard Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3850,
+        600
+      ],
+      "credentials": {},
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "mode": "url",
+          "value": "={{ $('Build Config').first().json.config.sheetUrl }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Dashboard"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node_23",
+      "name": "Prepare Cannibalisations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        800
+      ],
+      "parameters": {
+        "jsCode": "const data = $('THE GRINDER v3').first().json;\nif (!data.cannibalisations || data.cannibalisations.length === 0) {\n  return [{json: {'Keyword': 'Aucune cannibalisation detectee', 'URL 1': '', 'Pos 1': '', 'URL 2': '', 'Pos 2': '', 'Ecart': '', 'Volume': ''}}];\n}\nreturn data.cannibalisations.map(c => ({json: {\n  'Keyword': c.keyword,\n  'URL 1 (meilleure)': c.url1,\n  'Pos 1': c.pos1,\n  'URL 2': c.url2,\n  'Pos 2': c.pos2,\n  'Ecart': c.ecart || '',\n  'Volume': c.volume,\n  'Nb URLs': c.nb_urls\n}}));"
+      }
+    },
+    {
+      "id": "node_24",
+      "name": "Write Cannibalisations",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3850,
+        800
+      ],
+      "credentials": {},
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "mode": "url",
+          "value": "={{ $('Build Config').first().json.config.sheetUrl }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Cannibalisations"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node_25",
+      "name": "Clear Cannibalisations Tab",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3400,
+        500
+      ],
+      "credentials": {},
+      "parameters": {
+        "operation": "clear",
+        "documentId": {
+          "mode": "url",
+          "value": "={{ $('Build Config').first().json.config.sheetUrl }}"
+        },
+        "sheetName": {
+          "mode": "name",
+          "value": "Cannibalisations"
+        }
+      }
+    },
+    {
+      "id": "node_27",
+      "name": "Get Sheet Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4100,
+        400
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $('Build Config').first().json.config.spreadsheetId }}?fields=sheets.properties",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "credentials": {}
+    },
+    {
+      "id": "node_28",
+      "name": "Build Format Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4300,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// Build formatting requests from sheet metadata\nconst meta = $input.first().json;\nconst config = $('Build Config').first().json.config;\nconst spreadsheetId = config.spreadsheetId;\n\nconst sheetMap = {};\nfor (const s of meta.sheets) {\n  sheetMap[s.properties.title] = s.properties.sheetId;\n}\n\nconst oppoId = sheetMap['Opportunites'];\nconst detailId = sheetMap['Detail Keywords'];\nconst cannibId = sheetMap['Cannibalisations'];\nconst dashId = sheetMap['Dashboard'];\n\nconst requests = [];\n\n// Frozen headers on all tabs\nfor (const sid of [oppoId, detailId, cannibId, dashId]) {\n  if (sid == null) continue;\n  requests.push({\n    updateSheetProperties: {\n      properties: {sheetId: sid, gridProperties: {frozenRowCount: 1}},\n      fields: 'gridProperties.frozenRowCount'\n    }\n  });\n}\n\n// Dark header row on all tabs\nfor (const sid of [oppoId, detailId, cannibId, dashId]) {\n  if (sid == null) continue;\n  requests.push({\n    repeatCell: {\n      range: {sheetId: sid, startRowIndex: 0, endRowIndex: 1},\n      cell: {userEnteredFormat: {\n        backgroundColor: {red: 0.15, green: 0.15, blue: 0.15},\n        textFormat: {bold: true, foregroundColor: {red: 1, green: 1, blue: 1}, fontSize: 10}\n      }},\n      fields: 'userEnteredFormat(backgroundColor,textFormat)'\n    }\n  });\n}\n\n// Auto-filter on data tabs\nif (oppoId != null) requests.push({setBasicFilter: {filter: {range: {sheetId: oppoId, startRowIndex: 0, endColumnIndex: 12}}}});\nif (detailId != null) requests.push({setBasicFilter: {filter: {range: {sheetId: detailId, startRowIndex: 0, endColumnIndex: 10}}}});\nif (cannibId != null) requests.push({setBasicFilter: {filter: {range: {sheetId: cannibId, startRowIndex: 0, endColumnIndex: 8}}}});\n\n// Score gradient on Opportunites\nif (oppoId != null) {\n  requests.push({\n    addConditionalFormatRule: {\n      rule: {\n        ranges: [{sheetId: oppoId, startRowIndex: 1, startColumnIndex: 7, endColumnIndex: 8}],\n        gradientRule: {\n          minpoint: {color: {red: 0.96, green: 0.7, blue: 0.7}, type: 'NUMBER', value: '30'},\n          midpoint: {color: {red: 1, green: 0.95, blue: 0.6}, type: 'NUMBER', value: '55'},\n          maxpoint: {color: {red: 0.57, green: 0.82, blue: 0.55}, type: 'NUMBER', value: '80'}\n        }\n      },\n      index: 0\n    }\n  });\n\n  requests.push({\n    addConditionalFormatRule: {\n      rule: {\n        ranges: [{sheetId: oppoId, startRowIndex: 1, startColumnIndex: 2, endColumnIndex: 3}],\n        booleanRule: {\n          condition: {type: 'TEXT_EQ', values: [{userEnteredValue: 'Creer'}]},\n          format: {backgroundColor: {red: 0.82, green: 0.88, blue: 0.98}}\n        }\n      },\n      index: 1\n    }\n  });\n  requests.push({\n    addConditionalFormatRule: {\n      rule: {\n        ranges: [{sheetId: oppoId, startRowIndex: 1, startColumnIndex: 2, endColumnIndex: 3}],\n        booleanRule: {\n          condition: {type: 'TEXT_EQ', values: [{userEnteredValue: 'Optimiser'}]},\n          format: {backgroundColor: {red: 1, green: 0.93, blue: 0.8}}\n        }\n      },\n      index: 2\n    }\n  });\n\n  requests.push({updateDimensionProperties: {range: {sheetId: oppoId, dimension: 'COLUMNS', startIndex: 1, endIndex: 2}, properties: {pixelSize: 280}, fields: 'pixelSize'}});\n  requests.push({updateDimensionProperties: {range: {sheetId: oppoId, dimension: 'COLUMNS', startIndex: 3, endIndex: 4}, properties: {pixelSize: 300}, fields: 'pixelSize'}});\n  requests.push({updateDimensionProperties: {range: {sheetId: oppoId, dimension: 'COLUMNS', startIndex: 9, endIndex: 10}, properties: {pixelSize: 350}, fields: 'pixelSize'}});\n  requests.push({updateDimensionProperties: {range: {sheetId: oppoId, dimension: 'COLUMNS', startIndex: 11, endIndex: 12}, properties: {pixelSize: 400}, fields: 'pixelSize'}});\n}\n\nif (detailId != null) requests.push({autoResizeDimensions: {dimensions: {sheetId: detailId, dimension: 'COLUMNS', startIndex: 0, endIndex: 10}}});\nif (cannibId != null) requests.push({autoResizeDimensions: {dimensions: {sheetId: cannibId, dimension: 'COLUMNS', startIndex: 0, endIndex: 8}}});\nif (dashId != null) requests.push({autoResizeDimensions: {dimensions: {sheetId: dashId, dimension: 'COLUMNS', startIndex: 0, endIndex: 2}}});\n\nreturn [{json: {spreadsheetId, requests, tabs: Object.keys(sheetMap), requestCount: requests.length}}];\n"
+      }
+    },
+    {
+      "id": "node_29",
+      "name": "Apply Formatting",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4500,
+        400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $json.spreadsheetId }}:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({requests: $json.requests}) }}",
+        "options": {}
+      },
+      "credentials": {}
+    }
+  ],
+  "connections": {
+    "Build Config": {
+      "main": [
+        [
+          {
+            "node": "Get Positions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Positions": {
+      "main": [
+        [
+          {
+            "node": "Parse Positions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Positions": {
+      "main": [
+        [
+          {
+            "node": "Get MISSING",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get BESTED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get MISSING": {
+      "main": [
+        [
+          {
+            "node": "Merge MISSING+BESTED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get BESTED": {
+      "main": [
+        [
+          {
+            "node": "Merge MISSING+BESTED",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge MISSING+BESTED": {
+      "main": [
+        [
+          {
+            "node": "Parse Gap Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Gap Data": {
+      "main": [
+        [
+          {
+            "node": "Enrich Seeds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Seeds": {
+      "main": [
+        [
+          {
+            "node": "Cluster Keywords",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cluster Keywords": {
+      "main": [
+        [
+          {
+            "node": "THE GRINDER v3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Alert": {
+      "main": [
+        [
+          {
+            "node": "Alert STOP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Clear GAP Tab",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear GAP Tab": {
+      "main": [
+        [
+          {
+            "node": "Clear Positions Tab",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Positions Tab": {
+      "main": [
+        [
+          {
+            "node": "Clear Dashboard Tab",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Dashboard Tab": {
+      "main": [
+        [
+          {
+            "node": "Clear Cannibalisations Tab",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Write Dashboard Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "THE GRINDER v3": {
+      "main": [
+        [
+          {
+            "node": "Check Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Detail": {
+      "main": [
+        [
+          {
+            "node": "Write Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Opportunites": {
+      "main": [
+        [
+          {
+            "node": "Write Opportunites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Cannibalisations Tab": {
+      "main": [
+        [
+          {
+            "node": "Prepare Detail",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Opportunites",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Dashboard",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Cannibalisations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Cannibalisations": {
+      "main": [
+        [
+          {
+            "node": "Write Cannibalisations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Dashboard Sheet": {
+      "main": [
+        [
+          {
+            "node": "Get Sheet Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Input Form": {
+      "main": [
+        [
+          {
+            "node": "Build Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sheet Metadata": {
+      "main": [
+        [
+          {
+            "node": "Build Format Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Format Requests": {
+      "main": [
+        [
+          {
+            "node": "Apply Formatting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Paris",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  }
+}
